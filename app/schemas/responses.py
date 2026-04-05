@@ -8,6 +8,7 @@ class ServerStatus(BaseModel):
     description: str | None
     url: str
     transport: str
+    provider: str
     enabled: bool
     status: Literal["reachable", "unreachable", "disabled"]
     tags: list[str]

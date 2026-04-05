@@ -1,8 +1,11 @@
 import asyncio
 import logging
-from fastapi import APIRouter, Request, HTTPException
+import time
+from fastapi import APIRouter, Request, HTTPException, Query
 
 from app.mcp.pool import MCPClientPool
+from app.metrics import metrics_store
+from app import status_cache
 from app.schemas.responses import (
     ServerStatus,
     ToolInfo,
@@ -25,35 +28,52 @@ def get_pool(request: Request) -> MCPClientPool:
 # ---------------------------------------------------------------------------
 
 @router.get("", response_model=list[ServerStatus])
-async def list_mcps(request: Request):
-    """List all registered MCP servers and their reachability status."""
+async def list_mcps(
+    request: Request,
+    live: bool = Query(False, description="Force live ping instead of reading cache"),
+):
+    """
+    List all registered MCP servers.
+    By default reads from the status cache (fast, ~instant).
+    Pass ?live=true to force real-time ping of all servers.
+    """
     pool: MCPClientPool = get_pool(request)
     configs = pool.all_configs()
 
-    async def check_status(config) -> ServerStatus:
-        if not config.enabled:
-            status = "disabled"
-        else:
-            try:
-                client = pool.get(config.name)
-                reachable = await client.ping()
-                status = "reachable" if reachable else "unreachable"
-            except Exception:
-                status = "unreachable"
+    if live:
+        # Full live ping — slow but accurate
+        async def check_live(config) -> ServerStatus:
+            if not config.enabled:
+                cached = "disabled"
+            else:
+                try:
+                    ok = await pool.get(config.name).ping()
+                    cached = "reachable" if ok else "unreachable"
+                except Exception:
+                    cached = "unreachable"
+            status_cache.set_status(config.name, cached)
+            return _build_status(config, cached)
 
-        return ServerStatus(
-            name=config.name,
-            display_name=config.display_name,
-            description=config.description,
-            url=str(config.url),
-            transport=config.transport,
-            enabled=config.enabled,
-            status=status,
-            tags=config.tags,
-        )
+        results = await asyncio.gather(*[check_live(c) for c in configs])
+    else:
+        # Read from cache — instant
+        results = [_build_status(c, status_cache.get(c.name)) for c in configs]
 
-    results = await asyncio.gather(*[check_status(c) for c in configs])
     return list(results)
+
+
+def _build_status(config, status: str) -> ServerStatus:
+    return ServerStatus(
+        name=config.name,
+        display_name=config.display_name,
+        description=config.description,
+        url=str(config.url),
+        transport=config.transport,
+        provider=config.provider,
+        enabled=config.enabled,
+        status=status,  # type: ignore[arg-type]
+        tags=config.tags,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -90,17 +110,25 @@ async def call_tool(name: str, tool_name: str, body: ToolCallRequest, request: R
     pool: MCPClientPool = get_pool(request)
     client = pool.get(name)
 
+    t0 = time.monotonic()
+    is_error = False
     try:
         result = await client.call_tool(tool_name, body.arguments)
+        is_error = result.isError or False
     except TimeoutError:
+        is_error = True
+        metrics_store.record(name, tool_name, (time.monotonic() - t0) * 1000, True)
         raise HTTPException(status_code=504, detail=f"MCP server '{name}' timed out")
     except Exception as e:
+        is_error = True
         logger.exception("Error calling tool %s on %s", tool_name, name)
+        metrics_store.record(name, tool_name, (time.monotonic() - t0) * 1000, True)
         raise HTTPException(status_code=502, detail=f"MCP server '{name}' error: {e}")
 
+    metrics_store.record(name, tool_name, (time.monotonic() - t0) * 1000, is_error)
     return ToolCallResponse(
         content=[c.model_dump() for c in result.content],
-        is_error=result.isError or False,
+        is_error=is_error,
     )
 
 

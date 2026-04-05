@@ -16,6 +16,7 @@ class MCPServerConfig(BaseModel):
     transport: Literal["sse", "streamable_http"] = "sse"
     auth: ServerAuth = ServerAuth()
     gcp_project: str | None = None   # Injected as x-goog-user-project header
+    provider: str = "Custom"         # e.g. "Google Cloud", "Databricks", "Custom"
     enabled: bool = True
     tags: list[str] = []
     timeout_seconds: int = 30

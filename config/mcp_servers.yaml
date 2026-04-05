@@ -8,6 +8,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "data", "sql"]
@@ -19,6 +20,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "observability"]
@@ -30,6 +32,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "observability"]
@@ -41,6 +44,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "observability"]
@@ -52,6 +56,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "observability"]
@@ -63,6 +68,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "infra"]
@@ -74,6 +80,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "infra", "kubernetes"]
@@ -85,6 +92,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "database"]
@@ -96,6 +104,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "database"]
@@ -107,6 +116,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "database", "cache"]
@@ -118,6 +128,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "data"]
@@ -129,6 +140,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "search", "ai"]
@@ -140,6 +152,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "database"]
@@ -151,6 +164,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "data"]
@@ -162,6 +176,7 @@ servers:
     transport: streamable_http
     auth:
       type: google_access_token
+    provider: "Google Cloud"
     gcp_project: ai-production-487311
     enabled: true
     tags: ["gcp", "maps"]
