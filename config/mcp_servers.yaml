@@ -1,0 +1,167 @@
+servers:
+  # ── Google Cloud Built-in MCP Servers ──────────────────────────────────────
+
+  - name: bigquery
+    display_name: "BigQuery"
+    description: "BigQuery MCP server provides tools to interact with BigQuery"
+    url: "https://bigquery.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "data", "sql"]
+
+  - name: logging
+    display_name: "Cloud Logging"
+    description: "MCP for Logging API"
+    url: "https://logging.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "observability"]
+
+  - name: monitoring
+    display_name: "Cloud Monitoring"
+    description: "An MCP server that provides tools for Cloud Monitoring"
+    url: "https://monitoring.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "observability"]
+
+  - name: cloudtrace
+    display_name: "Cloud Trace"
+    description: "An MCP server that provides tools for Cloud Trace"
+    url: "https://cloudtrace.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "observability"]
+
+  - name: clouderrorreporting
+    display_name: "Cloud Error Reporting"
+    description: "An MCP server that provides tools for Cloud Error Reporting"
+    url: "https://clouderrorreporting.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "observability"]
+
+  - name: compute
+    display_name: "Compute Engine"
+    description: "Tools to manage Google Compute Engine resources"
+    url: "https://compute.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "infra"]
+
+  - name: container
+    display_name: "Google Kubernetes Engine"
+    description: "Tools to manage GKE clusters and Kubernetes resources"
+    url: "https://container.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "infra", "kubernetes"]
+
+  - name: firestore
+    display_name: "Firestore"
+    description: "Tools to interact with Firestore"
+    url: "https://firestore.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "database"]
+
+  - name: bigtable
+    display_name: "Bigtable Admin"
+    description: "MCP server for Bigtable Admin API"
+    url: "https://bigtableadmin.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "database"]
+
+  - name: memorystore
+    display_name: "Memorystore"
+    description: "Tools to manage Memorystore for Valkey instances and backups"
+    url: "https://memorystore.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "database", "cache"]
+
+  - name: dataplex
+    display_name: "Dataplex / Knowledge Catalog"
+    description: "MCP server for interacting with Knowledge Catalog (Dataplex)"
+    url: "https://dataplex.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "data"]
+
+  - name: discoveryengine
+    display_name: "Discovery Engine"
+    description: "MCP server which provides Discovery Engine tools"
+    url: "https://discoveryengine.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "search", "ai"]
+
+  - name: datamigration
+    display_name: "Database Migration"
+    description: "Database Migration MCP service"
+    url: "https://datamigration.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "database"]
+
+  - name: datastream
+    display_name: "Datastream"
+    description: "Datastream MCP service"
+    url: "https://datastream.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "data"]
+
+  - name: mapstools
+    display_name: "Google Maps"
+    description: "Tools for building LLM applications on top of Google Maps Platform"
+    url: "https://mapstools.googleapis.com/mcp"
+    transport: streamable_http
+    auth:
+      type: google_access_token
+    gcp_project: ai-production-487311
+    enabled: true
+    tags: ["gcp", "maps"]
