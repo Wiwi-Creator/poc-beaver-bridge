@@ -20,8 +20,22 @@ export interface MCPServer {
   transport: string
   provider: string
   enabled: boolean
-  status: 'reachable' | 'unreachable' | 'disabled'
+  status: 'reachable' | 'unreachable' | 'disabled' | 'unknown'
   tags: string[]
+}
+
+export interface RegisterMCPBody {
+  name: string
+  display_name: string
+  description?: string
+  url: string
+  transport: 'sse' | 'streamable_http'
+  auth_type: 'none' | 'bearer' | 'google_access_token' | 'google_id_token'
+  auth_token?: string
+  auth_audience?: string
+  provider: string
+  tags: string[]
+  enabled: boolean
 }
 
 export interface ToolMetrics {
@@ -86,4 +100,9 @@ export const api = {
     }),
   getMetrics: () => req<MetricsSummary>(`${BASE}/metrics`),
   getMCPMetrics: (name: string) => req<MCPMetrics>(`${BASE}/metrics/${name}`),
+  registerMCP: (body: RegisterMCPBody) =>
+    req<MCPServer>(`${BASE}/mcps`, { method: 'POST', body: JSON.stringify(body) }),
+  deleteMCP: (name: string) =>
+    fetch(`${BASE}/mcps/${name}`, { method: 'DELETE', headers: headers() })
+      .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`) }),
 }

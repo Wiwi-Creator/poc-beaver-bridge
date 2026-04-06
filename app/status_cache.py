@@ -73,6 +73,10 @@ async def start_background_refresh(pool) -> None:
     logger.info("Status cache background refresh started (every %ds)", REFRESH_INTERVAL)
 
 
+def remove_status(name: str) -> None:
+    _cache.pop(name, None)
+
+
 def stop():
     global _refresh_task
     if _refresh_task:

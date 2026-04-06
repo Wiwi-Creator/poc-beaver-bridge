@@ -10,8 +10,23 @@ class ServerStatus(BaseModel):
     transport: str
     provider: str
     enabled: bool
-    status: Literal["reachable", "unreachable", "disabled"]
+    status: Literal["reachable", "unreachable", "disabled", "unknown"]
     tags: list[str]
+
+
+class RegisterMCPRequest(BaseModel):
+    name: str
+    display_name: str
+    description: str | None = None
+    url: str
+    transport: Literal["sse", "streamable_http"] = "streamable_http"
+    auth_type: Literal["none", "bearer", "google_access_token", "google_id_token"] = "none"
+    auth_token: str | None = None      # bearer token
+    auth_audience: str | None = None   # google_id_token audience
+    provider: str = "Local"
+    tags: list[str] = []
+    enabled: bool = True
+    gcp_project: str | None = None
 
 
 class ToolInfo(BaseModel):

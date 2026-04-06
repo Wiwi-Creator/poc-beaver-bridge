@@ -8,6 +8,8 @@ from app.metrics import metrics_store
 from app import audit, status_cache
 from app.config import settings
 from app.limiter import limiter
+from app.registry.loader import load_registry, save_registry
+from app.registry.models import MCPServerConfig, ServerAuth
 from app.schemas.responses import (
     ServerStatus,
     ToolInfo,
@@ -15,6 +17,7 @@ from app.schemas.responses import (
     PromptInfo,
     ToolCallRequest,
     ToolCallResponse,
+    RegisterMCPRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +79,66 @@ def _build_status(config, status: str) -> ServerStatus:
         status=status,  # type: ignore[arg-type]
         tags=config.tags,
     )
+
+
+# ---------------------------------------------------------------------------
+# Register / Delete MCP
+# ---------------------------------------------------------------------------
+
+@router.post("", response_model=ServerStatus, status_code=201)
+async def register_mcp(body: RegisterMCPRequest, request: Request):
+    """Register a new MCP server (hot-reload, no restart needed)."""
+    pool: MCPClientPool = get_pool(request)
+
+    if body.name in {c.name for c in pool.all_configs()}:
+        raise HTTPException(status_code=409, detail=f"MCP '{body.name}' already exists")
+
+    config = MCPServerConfig(
+        name=body.name,
+        display_name=body.display_name,
+        description=body.description,
+        url=body.url,
+        transport=body.transport,
+        auth=ServerAuth(
+            type=body.auth_type,
+            token=body.auth_token,
+            audience=body.auth_audience,
+        ),
+        provider=body.provider,
+        tags=body.tags,
+        enabled=body.enabled,
+        gcp_project=body.gcp_project,
+    )
+
+    pool.add_server(config)
+    status_cache.set_status(config.name, "unknown")
+
+    # Persist to YAML
+    registry = load_registry(settings.MCP_REGISTRY_PATH)
+    registry.servers.append(config)
+    save_registry(settings.MCP_REGISTRY_PATH, registry)
+
+    logger.info("Registered new MCP: %s (%s)", config.name, config.url)
+    return _build_status(config, status_cache.get(config.name))
+
+
+@router.delete("/{name}", status_code=204)
+async def delete_mcp(name: str, request: Request):
+    """Remove an MCP server (hot-reload, no restart needed)."""
+    pool: MCPClientPool = get_pool(request)
+
+    if name not in {c.name for c in pool.all_configs()}:
+        raise HTTPException(status_code=404, detail=f"MCP '{name}' not found")
+
+    pool.remove_server(name)
+    status_cache.remove_status(name)
+
+    # Persist to YAML
+    registry = load_registry(settings.MCP_REGISTRY_PATH)
+    registry.servers = [s for s in registry.servers if s.name != name]
+    save_registry(settings.MCP_REGISTRY_PATH, registry)
+
+    logger.info("Deleted MCP: %s", name)
 
 
 # ---------------------------------------------------------------------------

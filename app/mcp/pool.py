@@ -24,3 +24,14 @@ class MCPClientPool:
 
     def all_configs(self) -> list[MCPServerConfig]:
         return list(self._configs.values())
+
+    def add_server(self, config: MCPServerConfig) -> None:
+        """Hot-add a new MCP server without restarting."""
+        self._configs[config.name] = config
+        if config.enabled:
+            self._clients[config.name] = MCPClient(config)
+
+    def remove_server(self, name: str) -> None:
+        """Hot-remove an MCP server without restarting."""
+        self._configs.pop(name, None)
+        self._clients.pop(name, None)
