@@ -5,7 +5,9 @@ from fastapi import APIRouter, Request, HTTPException, Query
 
 from app.mcp.pool import MCPClientPool
 from app.metrics import metrics_store
-from app import status_cache
+from app import audit, status_cache
+from app.config import settings
+from app.limiter import limiter
 from app.schemas.responses import (
     ServerStatus,
     ToolInfo,
@@ -105,10 +107,12 @@ async def list_tools(name: str, request: Request):
 
 
 @router.post("/{name}/tools/{tool_name}/call", response_model=ToolCallResponse)
+@limiter.limit(lambda: settings.RATE_LIMIT_TOOL_CALL)
 async def call_tool(name: str, tool_name: str, body: ToolCallRequest, request: Request):
     """Invoke a tool on an MCP server."""
     pool: MCPClientPool = get_pool(request)
     client = pool.get(name)
+    api_key = request.headers.get("X-API-Key")
 
     t0 = time.monotonic()
     is_error = False
@@ -116,16 +120,29 @@ async def call_tool(name: str, tool_name: str, body: ToolCallRequest, request: R
         result = await client.call_tool(tool_name, body.arguments)
         is_error = result.isError or False
     except TimeoutError:
-        is_error = True
-        metrics_store.record(name, tool_name, (time.monotonic() - t0) * 1000, True)
+        latency = (time.monotonic() - t0) * 1000
+        metrics_store.record(name, tool_name, latency, True)
+        audit.log_tool_call(
+            api_key=api_key, mcp_name=name, tool_name=tool_name,
+            latency_ms=latency, is_error=True, status_code=504,
+        )
         raise HTTPException(status_code=504, detail=f"MCP server '{name}' timed out")
     except Exception as e:
-        is_error = True
+        latency = (time.monotonic() - t0) * 1000
         logger.exception("Error calling tool %s on %s", tool_name, name)
-        metrics_store.record(name, tool_name, (time.monotonic() - t0) * 1000, True)
+        metrics_store.record(name, tool_name, latency, True)
+        audit.log_tool_call(
+            api_key=api_key, mcp_name=name, tool_name=tool_name,
+            latency_ms=latency, is_error=True, status_code=502,
+        )
         raise HTTPException(status_code=502, detail=f"MCP server '{name}' error: {e}")
 
-    metrics_store.record(name, tool_name, (time.monotonic() - t0) * 1000, is_error)
+    latency = (time.monotonic() - t0) * 1000
+    metrics_store.record(name, tool_name, latency, is_error)
+    audit.log_tool_call(
+        api_key=api_key, mcp_name=name, tool_name=tool_name,
+        latency_ms=latency, is_error=is_error, status_code=200,
+    )
     return ToolCallResponse(
         content=[c.model_dump() for c in result.content],
         is_error=is_error,

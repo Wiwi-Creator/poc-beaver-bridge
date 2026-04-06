@@ -2,8 +2,12 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
+from app.limiter import limiter
 from app.middleware.auth import APIKeyMiddleware
 from app.mcp.pool import MCPClientPool
 from app.registry.loader import load_registry
@@ -40,6 +44,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiting（slowapi）
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+# API Key 認證
 app.add_middleware(APIKeyMiddleware, api_keys=list(settings.api_keys_set))
 
 app.include_router(health_router)
