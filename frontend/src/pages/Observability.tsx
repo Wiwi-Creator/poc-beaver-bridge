@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, MetricsSummary, MCPMetrics } from '../api'
+import { api, MetricsSummary, MCPMetrics, AuditEvent } from '../api'
 
 function Bar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max > 0 ? Math.max(2, (value / max) * 100) : 0
@@ -21,13 +21,110 @@ function MetricRow({ label, value, unit = '', color = 'var(--text-primary)' }: {
 
 function timeAgo(iso: string | null): string {
   if (!iso) return '—'
-  const diff = Date.now() - new Date(iso + 'Z').getTime()
+  const diff = Date.now() - new Date(iso + (iso.endsWith('Z') ? '' : 'Z')).getTime()
   if (diff < 60000) return 'just now'
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
   return `${Math.floor(diff / 86400000)}d ago`
 }
 
+function fmtTs(iso: string): string {
+  return new Date(iso).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+// ── Audit Log Table ───────────────────────────────────────────────────────────
+function AuditLog({ autoRefresh }: { autoRefresh: boolean }) {
+  const [events, setEvents] = useState<AuditEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [limit, setLimit] = useState(50)
+
+  const load = (l = limit) =>
+    api.getAuditLog(l).then(setEvents).finally(() => setLoading(false))
+
+  useEffect(() => { load() }, [limit])
+  useEffect(() => {
+    if (!autoRefresh) return
+    const id = setInterval(() => load(), 5000)
+    return () => clearInterval(id)
+  }, [autoRefresh, limit])
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 24 }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--brown-700)' }}>Audit Log</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            className="input"
+            value={limit}
+            onChange={e => setLimit(Number(e.target.value))}
+            style={{ fontSize: 11, padding: '3px 8px', width: 'auto' }}
+          >
+            {[20, 50, 100, 200].map(n => <option key={n} value={n}>Last {n}</option>)}
+          </select>
+          <button className="btn btn-ghost" onClick={() => load()} style={{ fontSize: 11, padding: '4px 10px' }}>⟳</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Loading...</div>
+      ) : events.length === 0 ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+          No audit events yet — make a tool call or trigger an auth failure.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: 'var(--brown-50)' }}>
+                {['Time', 'Event', 'API Key', 'MCP / Path', 'Tool', 'Latency', 'Status'].map(h => (
+                  <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: .5, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((e, i) => (
+                <tr key={i} style={{
+                  borderBottom: '1px solid var(--border)',
+                  background: i % 2 === 0 ? 'transparent' : 'rgba(250,244,237,.4)',
+                }}>
+                  <td style={{ padding: '7px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 11 }}>
+                    {fmtTs(e.ts)}
+                  </td>
+                  <td style={{ padding: '7px 12px' }}>
+                    <span className={`badge ${e.event === 'tool_call' ? (e.is_error ? 'badge-red' : 'badge-green') : 'badge-red'}`} style={{ fontSize: 10 }}>
+                      {e.event === 'tool_call' ? (e.is_error ? '⚠ error' : '✓ call') : '🔒 auth fail'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-secondary)' }}>
+                    {e.api_key}
+                  </td>
+                  <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: 11, color: 'var(--brown-600)' }}>
+                    {e.mcp ?? e.path ?? '—'}
+                  </td>
+                  <td style={{ padding: '7px 12px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-secondary)' }}>
+                    {e.tool ?? (e.reason ? <span style={{ color: 'var(--red-500)' }}>{e.reason}</span> : '—')}
+                  </td>
+                  <td style={{ padding: '7px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {e.latency_ms != null ? `${e.latency_ms}ms` : '—'}
+                  </td>
+                  <td style={{ padding: '7px 12px' }}>
+                    <span style={{ fontFamily: 'monospace', fontSize: 11, color: e.status >= 400 ? 'var(--red-500)' : 'var(--green-600)', fontWeight: 600 }}>
+                      {e.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Observability() {
   const [data, setData] = useState<MetricsSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -71,14 +168,16 @@ export default function Observability() {
           {/* Summary stat cards */}
           <div style={{ display: 'flex', gap: 14, marginBottom: 28 }}>
             {[
-              { label: 'Total Calls',   value: data.total_calls,  color: 'var(--brown-600)', bg: 'var(--brown-50)' },
-              { label: 'Total Errors',  value: data.total_errors,  color: 'var(--red-500)',   bg: 'var(--red-50)' },
-              { label: 'Active MCPs',   value: data.active_mcps,  color: 'var(--green-600)', bg: 'var(--green-50)' },
-              { label: 'Success Rate',
+              { label: 'Total Calls',  value: data.total_calls,  color: 'var(--brown-600)', bg: 'var(--brown-50)' },
+              { label: 'Total Errors', value: data.total_errors, color: 'var(--red-500)',   bg: 'var(--red-50)' },
+              { label: 'Active MCPs',  value: data.active_mcps,  color: 'var(--green-600)', bg: 'var(--green-50)' },
+              {
+                label: 'Success Rate',
                 value: data.total_calls > 0
                   ? ((1 - data.total_errors / data.total_calls) * 100).toFixed(1) + '%'
                   : '—',
-                color: 'var(--green-600)', bg: 'var(--green-50)' },
+                color: 'var(--green-600)', bg: 'var(--green-50)',
+              },
             ].map(c => (
               <div key={c.label} className="card" style={{ flex: 1, background: c.bg, border: 'none' }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: c.color, textTransform: 'uppercase', letterSpacing: .6, opacity: .7, marginBottom: 6 }}>{c.label}</div>
@@ -102,8 +201,7 @@ export default function Observability() {
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>click for details</span>
                 </div>
                 {data.mcps.map((m, i) => (
-                  <div
-                    key={m.mcp_name}
+                  <div key={m.mcp_name}
                     onClick={() => setSelected(selected?.mcp_name === m.mcp_name ? null : m)}
                     style={{
                       padding: '12px 18px', cursor: 'pointer',
@@ -118,18 +216,12 @@ export default function Observability() {
                       <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', minWidth: 18 }}>#{i + 1}</span>
                       <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', flex: 1 }}>{m.mcp_name}</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--brown-600)' }}>{m.call_count} calls</span>
-                      {m.error_count > 0 && (
-                        <span className="badge badge-red" style={{ fontSize: 10 }}>{m.error_count} err</span>
-                      )}
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 60, textAlign: 'right' }}>
-                        {timeAgo(m.last_called)}
-                      </span>
+                      {m.error_count > 0 && <span className="badge badge-red" style={{ fontSize: 10 }}>{m.error_count} err</span>}
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 60, textAlign: 'right' }}>{timeAgo(m.last_called)}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 30 }}>
                       <Bar value={m.call_count} max={maxCalls} color="var(--brown-400)" />
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 70 }}>
-                        avg {m.avg_latency_ms}ms
-                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 70 }}>avg {m.avg_latency_ms}ms</span>
                     </div>
                   </div>
                 ))}
@@ -142,18 +234,14 @@ export default function Observability() {
                     <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--brown-700)' }}>{selected.mcp_name}</span>
                     <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16 }}>✕</button>
                   </div>
-
                   <MetricRow label="Total Calls" value={selected.call_count} />
                   <MetricRow label="Errors" value={selected.error_count} color={selected.error_count > 0 ? 'var(--red-500)' : undefined} />
                   <MetricRow label="Error Rate" value={(selected.error_rate * 100).toFixed(1)} unit="%" color={selected.error_rate > 0.1 ? 'var(--red-500)' : 'var(--green-600)'} />
                   <MetricRow label="Avg Latency" value={selected.avg_latency_ms} unit="ms" />
                   <MetricRow label="Last Called" value={timeAgo(selected.last_called)} />
-
                   {selected.top_tools.length > 0 && (
                     <div style={{ marginTop: 16 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: .6, marginBottom: 10 }}>
-                        Top Tools
-                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: .6, marginBottom: 10 }}>Top Tools</div>
                       {selected.top_tools.map(t => (
                         <div key={t.tool_name} style={{ marginBottom: 10 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -172,6 +260,9 @@ export default function Observability() {
               )}
             </div>
           )}
+
+          {/* Audit Log */}
+          <AuditLog autoRefresh={autoRefresh} />
         </>
       )}
     </div>

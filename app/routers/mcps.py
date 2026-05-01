@@ -4,14 +4,16 @@ import time
 from fastapi import APIRouter, Request, HTTPException, Query
 
 from app.mcp.pool import MCPClientPool
+from app.mcp.client import MCPClient
 from app.metrics import metrics_store
-from app import audit, status_cache
+from app import audit, pii, status_cache
 from app.config import settings
 from app.limiter import limiter
 from app.registry.loader import load_registry, save_registry
 from app.registry.models import MCPServerConfig, ServerAuth
 from app.schemas.responses import (
     ServerStatus,
+    TestConnectionResult,
     ToolInfo,
     ResourceInfo,
     PromptInfo,
@@ -26,6 +28,50 @@ router = APIRouter(prefix="/mcps", tags=["mcp"])
 
 def get_pool(request: Request) -> MCPClientPool:
     return request.app.state.mcp_pool
+
+
+def _build_config(body: RegisterMCPRequest) -> MCPServerConfig:
+    return MCPServerConfig(
+        name=body.name,
+        display_name=body.display_name,
+        description=body.description,
+        url=body.url,
+        transport=body.transport,
+        auth=ServerAuth(
+            type=body.auth_type,
+            token=body.auth_token or None,
+            audience=body.auth_audience or None,
+        ),
+        provider=body.provider,
+        tags=body.tags,
+        enabled=body.enabled,
+        gcp_project=body.gcp_project or None,
+    )
+
+
+def _build_status(config: MCPServerConfig, status: str) -> ServerStatus:
+    return ServerStatus(
+        name=config.name,
+        display_name=config.display_name,
+        description=config.description,
+        url=str(config.url),
+        transport=config.transport,
+        provider=config.provider,
+        enabled=config.enabled,
+        status=status,           # type: ignore[arg-type]
+        tags=config.tags,
+        auth_type=config.auth.type,
+    )
+
+
+async def _ping_soon(name: str, pool: MCPClientPool) -> None:
+    """Background task: ping newly added server and update status cache."""
+    try:
+        client = pool.get(name)
+        ok = await asyncio.wait_for(client.ping(), timeout=10.0)
+        status_cache.set_status(name, "reachable" if ok else "unreachable")
+    except Exception:
+        status_cache.set_status(name, "unreachable")
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +92,6 @@ async def list_mcps(
     configs = pool.all_configs()
 
     if live:
-        # Full live ping — slow but accurate
         async def check_live(config) -> ServerStatus:
             if not config.enabled:
                 cached = "disabled"
@@ -61,28 +106,36 @@ async def list_mcps(
 
         results = await asyncio.gather(*[check_live(c) for c in configs])
     else:
-        # Read from cache — instant
         results = [_build_status(c, status_cache.get(c.name)) for c in configs]
 
     return list(results)
 
 
-def _build_status(config, status: str) -> ServerStatus:
-    return ServerStatus(
-        name=config.name,
-        display_name=config.display_name,
-        description=config.description,
-        url=str(config.url),
-        transport=config.transport,
-        provider=config.provider,
-        enabled=config.enabled,
-        status=status,  # type: ignore[arg-type]
-        tags=config.tags,
-    )
+# ---------------------------------------------------------------------------
+# Test Connection (before registering)
+# ---------------------------------------------------------------------------
+
+@router.post("/test", response_model=TestConnectionResult)
+async def test_connection(body: RegisterMCPRequest):
+    """
+    Probe a MCP server URL without saving it.
+    Used in the register modal to verify connectivity before committing.
+    """
+    config = _build_config(body)
+    client = MCPClient(config)
+    t0 = time.monotonic()
+    try:
+        tools = await asyncio.wait_for(client.list_tools(), timeout=8.0)
+        latency = (time.monotonic() - t0) * 1000
+        return TestConnectionResult(ok=True, tool_count=len(tools), latency_ms=round(latency, 1))
+    except asyncio.TimeoutError:
+        return TestConnectionResult(ok=False, error="Connection timed out (8s)")
+    except Exception as e:
+        return TestConnectionResult(ok=False, error=str(e))
 
 
 # ---------------------------------------------------------------------------
-# Register / Delete MCP
+# Register MCP
 # ---------------------------------------------------------------------------
 
 @router.post("", response_model=ServerStatus, status_code=201)
@@ -93,23 +146,7 @@ async def register_mcp(body: RegisterMCPRequest, request: Request):
     if body.name in {c.name for c in pool.all_configs()}:
         raise HTTPException(status_code=409, detail=f"MCP '{body.name}' already exists")
 
-    config = MCPServerConfig(
-        name=body.name,
-        display_name=body.display_name,
-        description=body.description,
-        url=body.url,
-        transport=body.transport,
-        auth=ServerAuth(
-            type=body.auth_type,
-            token=body.auth_token,
-            audience=body.auth_audience,
-        ),
-        provider=body.provider,
-        tags=body.tags,
-        enabled=body.enabled,
-        gcp_project=body.gcp_project,
-    )
-
+    config = _build_config(body)
     pool.add_server(config)
     status_cache.set_status(config.name, "unknown")
 
@@ -118,9 +155,51 @@ async def register_mcp(body: RegisterMCPRequest, request: Request):
     registry.servers.append(config)
     save_registry(settings.MCP_REGISTRY_PATH, registry)
 
+    # Fire-and-forget ping so status updates within ~10s
+    asyncio.create_task(_ping_soon(config.name, pool))
+
     logger.info("Registered new MCP: %s (%s)", config.name, config.url)
     return _build_status(config, status_cache.get(config.name))
 
+
+# ---------------------------------------------------------------------------
+# Edit MCP
+# ---------------------------------------------------------------------------
+
+@router.put("/{name}", response_model=ServerStatus)
+async def update_mcp(name: str, body: RegisterMCPRequest, request: Request):
+    """Update an existing MCP server (hot-reload)."""
+    pool: MCPClientPool = get_pool(request)
+
+    existing_configs = {c.name: c for c in pool.all_configs()}
+    if name not in existing_configs:
+        raise HTTPException(status_code=404, detail=f"MCP '{name}' not found")
+
+    # If bearer token left blank, keep the existing one
+    existing_auth = existing_configs[name].auth
+    if body.auth_type == "bearer" and not body.auth_token:
+        body = body.model_copy(update={"auth_token": existing_auth.token})
+
+    config = _build_config(body)
+
+    # Hot-reload: swap out old for new
+    pool.remove_server(name)
+    pool.add_server(config)
+    status_cache.set_status(name, "unknown")
+    asyncio.create_task(_ping_soon(name, pool))
+
+    # Persist to YAML
+    registry = load_registry(settings.MCP_REGISTRY_PATH)
+    registry.servers = [config if s.name == name else s for s in registry.servers]
+    save_registry(settings.MCP_REGISTRY_PATH, registry)
+
+    logger.info("Updated MCP: %s", name)
+    return _build_status(config, status_cache.get(name))
+
+
+# ---------------------------------------------------------------------------
+# Delete MCP
+# ---------------------------------------------------------------------------
 
 @router.delete("/{name}", status_code=204)
 async def delete_mcp(name: str, request: Request):
@@ -206,10 +285,10 @@ async def call_tool(name: str, tool_name: str, body: ToolCallRequest, request: R
         api_key=api_key, mcp_name=name, tool_name=tool_name,
         latency_ms=latency, is_error=is_error, status_code=200,
     )
-    return ToolCallResponse(
-        content=[c.model_dump() for c in result.content],
-        is_error=is_error,
-    )
+
+    # PII masking on response content
+    masked_content = pii.mask_content([c.model_dump() for c in result.content])
+    return ToolCallResponse(content=masked_content, is_error=is_error)
 
 
 # ---------------------------------------------------------------------------

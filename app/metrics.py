@@ -1,8 +1,3 @@
-"""
-In-memory metrics store.
-Records call count, error count, latency, and last_called per MCP and tool.
-Thread-safe via asyncio (single-threaded event loop).
-"""
 import time
 from dataclasses import dataclass, field
 from datetime import datetime

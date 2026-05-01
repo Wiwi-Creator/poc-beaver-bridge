@@ -12,6 +12,14 @@ class ServerStatus(BaseModel):
     enabled: bool
     status: Literal["reachable", "unreachable", "disabled", "unknown"]
     tags: list[str]
+    auth_type: str = "none"
+
+
+class TestConnectionResult(BaseModel):
+    ok: bool
+    tool_count: int = 0
+    latency_ms: float = 0
+    error: str | None = None
 
 
 class RegisterMCPRequest(BaseModel):

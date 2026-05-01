@@ -8,6 +8,7 @@ const headers = () => ({
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { headers: headers(), ...init })
+  if (res.status === 429) throw new Error('Rate limit exceeded — 請稍後再試')
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
   return res.json()
 }
@@ -22,6 +23,27 @@ export interface MCPServer {
   enabled: boolean
   status: 'reachable' | 'unreachable' | 'disabled' | 'unknown'
   tags: string[]
+  auth_type: string
+}
+
+export interface TestConnectionResult {
+  ok: boolean
+  tool_count: number
+  latency_ms: number
+  error: string | null
+}
+
+export interface AuditEvent {
+  event: 'tool_call' | 'auth_failure'
+  ts: string
+  api_key: string
+  mcp?: string
+  tool?: string
+  latency_ms?: number
+  is_error?: boolean
+  status: number
+  path?: string
+  reason?: string
 }
 
 export interface RegisterMCPBody {
@@ -102,7 +124,13 @@ export const api = {
   getMCPMetrics: (name: string) => req<MCPMetrics>(`${BASE}/metrics/${name}`),
   registerMCP: (body: RegisterMCPBody) =>
     req<MCPServer>(`${BASE}/mcps`, { method: 'POST', body: JSON.stringify(body) }),
+  updateMCP: (name: string, body: RegisterMCPBody) =>
+    req<MCPServer>(`${BASE}/mcps/${name}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteMCP: (name: string) =>
     fetch(`${BASE}/mcps/${name}`, { method: 'DELETE', headers: headers() })
       .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`) }),
+  testMCP: (body: RegisterMCPBody) =>
+    req<TestConnectionResult>(`${BASE}/mcps/test`, { method: 'POST', body: JSON.stringify(body) }),
+  getAuditLog: (limit = 50) =>
+    req<AuditEvent[]>(`${BASE}/audit?limit=${limit}`),
 }
